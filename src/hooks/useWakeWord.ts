@@ -1,42 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Language } from '../types';
-
-// Types and Interfaces
-interface WakeWordMessage {
-  type: 'AUDIO_CHUNK' | 'SET_LANGUAGE' | 'SET_SENSITIVITY' | 'START' | 'STOP';
-  data?: any;
-  timestamp?: number;
-}
-
-interface WakeWordResponse {
-  type: 'DETECTION' | 'STATUS' | 'ERROR';
-  confidence?: number;
-  detected?: boolean;
-  message?: string;
-  timestamp: number;
-}
-
-interface WakeWordConfig {
-  sensitivity: number;
-  useLocalProcessing: boolean;
-  webSocketUrl?: string;
-  wakeWords: string[];
-  enableVAD: boolean;
-  bufferDuration: number;
-}
-
-interface UseWakeWordReturn {
-  isActive: boolean;
-  isDetected: boolean;
-  confidence: number;
-  lastDetectionTime: number | null;
-  batteryImpact: 'low' | 'medium' | 'high';
-  startWakeWorker: () => Promise<boolean>;
-  stopWakeWorker: () => void;
-  setLanguage: (language: Language) => void;
-  setSensitivity: (sensitivity: number) => void;
-  getStatus: () => string;
-}
+import type { Language, WakeWordConfig } from '../types';
 
 // WebSocket Service Class
 class WakeWordService {
@@ -48,7 +11,7 @@ class WakeWordService {
 
   constructor(
     private url: string = 'ws://localhost:8080/wake-word-stream',
-    private onMessage?: (response: WakeWordResponse) => void,
+    private onMessage?: (response: any) => void,
     private onStatusChange?: (status: string) => void
   ) {}
 
@@ -71,7 +34,7 @@ class WakeWordService {
 
       this.ws.onmessage = (event) => {
         try {
-          const response: WakeWordResponse = JSON.parse(event.data);
+          const response = JSON.parse(event.data);
           this.onMessage?.(response);
         } catch (error) {
           console.error('Failed to parse wake word response:', error);
@@ -123,7 +86,7 @@ class WakeWordService {
     }, this.reconnectDelay * this.reconnectAttempts);
   }
 
-  sendMessage(message: WakeWordMessage) {
+  sendMessage(message: any) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         ...message,
@@ -132,18 +95,6 @@ class WakeWordService {
     } else {
       console.warn('WebSocket not connected, message not sent:', message.type);
     }
-  }
-
-  sendAudioChunk(audioData: Float32Array) {
-    const buffer = new ArrayBuffer(audioData.length * 4);
-    const view = new Float32Array(buffer);
-    view.set(audioData);
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-
-    this.sendMessage({
-      type: 'AUDIO_CHUNK',
-      data: base64
-    });
   }
 
   disconnect() {
@@ -192,7 +143,7 @@ class WakeWordAudioProcessor {
         sampleRate: this.sampleRate,
       });
 
-      // Create script processor (fallback for older browsers)
+      // Create script processor
       this.scriptProcessor = this.audioContext.createScriptProcessor(this.bufferSize, 1, 1);
       
       this.scriptProcessor.onaudioprocess = (event) => {
@@ -230,7 +181,7 @@ class WakeWordAudioProcessor {
 
   private hasVoiceActivity(audioData: Float32Array): boolean {
     const energy = audioData.reduce((sum, sample) => sum + sample * sample, 0) / audioData.length;
-    return energy > 0.001; // Adjust threshold as needed
+    return energy > 0.001;
   }
 
   private getAudioChunk(): Float32Array {
@@ -250,7 +201,7 @@ class WakeWordAudioProcessor {
     const energy = audioChunk.reduce((sum, sample) => sum + Math.abs(sample), 0) / audioChunk.length;
     const spectralCentroid = this.calculateSpectralCentroid(audioChunk);
     
-    // Mock confidence calculation based on audio features
+    // Mock confidence calculation
     const mockConfidence = Math.min(0.99, (energy * 50 + spectralCentroid * 0.1) * Math.random());
     
     if (mockConfidence > this.wakeWordThreshold) {
@@ -263,17 +214,14 @@ class WakeWordAudioProcessor {
   }
 
   private calculateSpectralCentroid(audioData: Float32Array): number {
-    // Simple spectral centroid calculation
     const fftSize = 1024;
     const fft = new Float32Array(fftSize);
     const windowSize = Math.min(audioData.length, fftSize);
     
-    // Apply window and copy data
     for (let i = 0; i < windowSize; i++) {
-      fft[i] = audioData[i] * 0.5 * (1 - Math.cos(2 * Math.PI * i / (windowSize - 1))); // Hanning window
+      fft[i] = audioData[i] * 0.5 * (1 - Math.cos(2 * Math.PI * i / (windowSize - 1)));
     }
     
-    // Simplified spectral centroid
     let weightedSum = 0;
     let magnitudeSum = 0;
     
@@ -302,7 +250,6 @@ class WakeWordAudioProcessor {
 
   setLanguage(language: string) {
     this.language = language;
-    // TODO: Load language-specific model
   }
 
   setSensitivity(sensitivity: number) {
@@ -329,13 +276,27 @@ class WakeWordAudioProcessor {
   }
 }
 
-// Constants
+// Hook interface
+interface UseWakeWordReturn {
+  isActive: boolean;
+  isDetected: boolean;
+  confidence: number;
+  lastDetectionTime: number | null;
+  batteryImpact: 'low' | 'medium' | 'high';
+  startWakeWorker: () => Promise<boolean>;
+  stopWakeWorker: () => void;
+  setLanguage: (language: Language) => void;
+  setSensitivity: (sensitivity: number) => void;
+  getStatus: () => string;
+}
+
+// Default configuration
 const DEFAULT_CONFIG: WakeWordConfig = {
   sensitivity: 0.7,
   useLocalProcessing: true,
   wakeWords: ['orion', 'hey orion'],
   enableVAD: true,
-  bufferDuration: 2000, // 2 seconds
+  bufferDuration: 2000,
 };
 
 // Main Hook
@@ -422,7 +383,6 @@ export const useWakeWord = (
     onWakeWordDetected?.(detectionConfidence);
     updateStatus(`Wake word detected (confidence: ${(detectionConfidence * 100).toFixed(1)}%)`);
 
-    // Clear detection state after 3 seconds
     if (detectionTimeoutRef.current) {
       clearTimeout(detectionTimeoutRef.current);
     }
@@ -442,7 +402,7 @@ export const useWakeWord = (
   // Monitor battery impact
   const monitorBatteryImpact = useCallback(() => {
     if (!('getBattery' in navigator)) {
-      setBatteryImpact('medium'); // Assume medium if we can't check
+      setBatteryImpact('medium');
       return;
     }
 
@@ -520,7 +480,6 @@ export const useWakeWord = (
     setIsDetected(false);
     setConfidence(0);
 
-    // Clear timeouts
     if (detectionTimeoutRef.current) {
       clearTimeout(detectionTimeoutRef.current);
       detectionTimeoutRef.current = null;
@@ -529,3 +488,77 @@ export const useWakeWord = (
     if (batteryMonitorRef.current) {
       clearInterval(batteryMonitorRef.current);
       batteryMonitorRef.current = null;
+    }
+
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.cleanup();
+      audioProcessorRef.current = null;
+    }
+
+    if (wakeWordServiceRef.current) {
+      wakeWordServiceRef.current.sendMessage({ type: 'STOP' });
+      wakeWordServiceRef.current.disconnect();
+      wakeWordServiceRef.current = null;
+    }
+
+    updateStatus('Wake word detection stopped');
+  }, [updateStatus]);
+
+  // Set language
+  const setLanguage = useCallback((newLanguage: Language) => {
+    setLanguageState(newLanguage);
+    updateStatus(`Language updated to: ${newLanguage}`);
+
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.setLanguage(newLanguage);
+    }
+
+    if (wakeWordServiceRef.current) {
+      wakeWordServiceRef.current.sendMessage({
+        type: 'SET_LANGUAGE',
+        data: newLanguage
+      });
+    }
+  }, [updateStatus]);
+
+  // Set sensitivity
+  const setSensitivity = useCallback((sensitivity: number) => {
+    const clampedSensitivity = Math.max(0, Math.min(1, sensitivity));
+    
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.setSensitivity(clampedSensitivity);
+    }
+
+    if (wakeWordServiceRef.current) {
+      wakeWordServiceRef.current.sendMessage({
+        type: 'SET_SENSITIVITY',
+        data: clampedSensitivity
+      });
+    }
+
+    updateStatus(`Sensitivity updated to: ${(clampedSensitivity * 100).toFixed(0)}%`);
+  }, [updateStatus]);
+
+  // Get current status
+  const getStatus = useCallback(() => status, [status]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopWakeWorker();
+    };
+  }, [stopWakeWorker]);
+
+  return {
+    isActive,
+    isDetected,
+    confidence,
+    lastDetectionTime,
+    batteryImpact,
+    startWakeWorker,
+    stopWakeWorker,
+    setLanguage,
+    setSensitivity,
+    getStatus,
+  };
+};
