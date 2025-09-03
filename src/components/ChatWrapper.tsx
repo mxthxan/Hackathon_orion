@@ -3,7 +3,7 @@ import { MessageCircle, Send, Mic, MicOff, Volume2, FileDown } from 'lucide-reac
 import type { Language, ChatMessage } from '../types';
 import { getTranslation } from '../utils/translations';
 import { useSpeech } from '../hooks/useSpeech';
-import { openAIService } from '../services/openai';
+import { BrailleButton } from './BrailleButton';
 
 interface ChatWrapperProps {
   language: Language;
@@ -92,22 +92,8 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({
   };
 
   const handleExportBraille = async (text: string) => {
-    try {
-      // TODO: Implement Braille export API integration
-      const response = await fetch('/api/braille/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, language })
-      });
-      
-      const data = await response.json();
-      if (data.fileUrl) {
-        window.open(data.fileUrl, '_blank');
-        onStatusChange('Braille file exported successfully');
-      }
-    } catch (error) {
-      onStatusChange(`${t('error')}: Failed to export Braille`);
-    }
+    // This is now handled by BrailleButton component
+    onStatusChange('Use the Braille export button to generate Braille files');
   };
 
   const formatTimestamp = (timestamp: number) => {
@@ -170,14 +156,14 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({
                     >
                       <Volume2 className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => handleExportBraille(message.content)}
-                      className="p-1 hover:bg-gray-600 rounded transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      aria-label="Export this message to Braille"
-                      title={t('exportBraille')}
-                    >
-                      <FileDown className="w-4 h-4" />
-                    </button>
+                    <div className="scale-75 origin-left">
+                      <BrailleButton
+                        text={message.content}
+                        language={language}
+                        onStatusChange={onStatusChange}
+                        variant="secondary"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

@@ -3,8 +3,8 @@ import { Calendar, HelpCircle } from 'lucide-react';
 import type { Language, ChatMessage, GlobalState } from './types';
 import { getTranslation } from './utils/translations';
 import { useTTS } from './hooks/useTTS';
+import { useWakeWord } from './hooks/useWakeWord';
 import { openAIService } from './services/openai';
-import { wakeWordDetector } from './utils/wakeWord';
 import { Header } from './components/Header';
 import { SkipLink } from './components/SkipLink';
 import { VisualUnderstandingCard } from './components/VisualUnderstandingCard';
@@ -26,12 +26,26 @@ function App() {
 
   const [dailyBriefOpen, setDailyBriefOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
 
   const { speak, speaking } = useTTS(
     globalState.selectedLanguage,
     (status) => updateStatus(status)
   );
 
+  const { 
+    isActive: wakeWordActive, 
+    isDetected: wakeWordDetected,
+    startWakeWorker, 
+    stopWakeWorker,
+    setLanguage: setWakeWordLanguage
+  } = useWakeWord(
+    () => {
+      updateStatus('Wake word "Orion" detected! Ready for your command...');
+      setGlobalState(prev => ({ ...prev, listening: true }));
+    },
+    updateStatus
+  );
   const t = (key: string) => getTranslation(globalState.selectedLanguage, key);
 
   const updateStatus = useCallback((message: string) => {
@@ -40,29 +54,22 @@ function App() {
 
   // Initialize wake word detection
   useEffect(() => {
-    if (wakeWordDetector.isSupported()) {
-      wakeWordDetector.setCallbacks(
-        () => {
-          updateStatus('Wake word "Orion" detected! Ready for your command...');
-          setGlobalState(prev => ({ ...prev, listening: true }));
-        },
-        updateStatus
-      );
-      
-      // Start wake word detection
-      wakeWordDetector.startListening();
-      updateStatus('Wake word detection active - say "Orion" to activate');
-    } else {
-      updateStatus('Wake word detection not supported in this browser');
+    // TODO: Auto-start wake word detection based on user preference
+    console.log('TODO: Load wake word preference from user settings');
+    console.log('TODO: Start wake word detection if enabled by user');
+    
+    if (wakeWordEnabled) {
+      startWakeWorker();
     }
 
     return () => {
-      wakeWordDetector.stopListening();
+      stopWakeWorker();
     };
-  }, [updateStatus]);
+  }, [wakeWordEnabled, startWakeWorker, stopWakeWorker]);
+
   const handleLanguageChange = useCallback((language: Language) => {
     setGlobalState(prev => ({ ...prev, selectedLanguage: language }));
-    wakeWordDetector.setLanguage(language);
+    setWakeWordLanguage(language);
     updateStatus(`Language changed to ${getTranslation(language, `languages.${language}`)}`);
   }, [updateStatus]);
 
@@ -71,6 +78,18 @@ function App() {
     updateStatus(`Auto TTS ${globalState.ttsEnabled ? 'disabled' : 'enabled'}`);
   }, [globalState.ttsEnabled, updateStatus]);
 
+  const handleWakeWordToggle = useCallback(() => {
+    const newState = !wakeWordEnabled;
+    setWakeWordEnabled(newState);
+    
+    if (newState) {
+      startWakeWorker();
+      updateStatus('Wake word detection enabled');
+    } else {
+      stopWakeWorker();
+      updateStatus('Wake word detection disabled');
+    }
+  }, [wakeWordEnabled, startWakeWorker, stopWakeWorker, updateStatus]);
   const handleListeningChange = useCallback((listening: boolean) => {
     setGlobalState(prev => ({ ...prev, listening }));
   }, []);
@@ -119,6 +138,19 @@ function App() {
     } catch (error) {
       const errorMessage = `${t('error')}: ${error instanceof Error ? error.message : 'Unknown error'}`;
       updateStatus(errorMessage);
+      
+      // Provide fallback response when API fails
+      const fallbackMessage: ChatMessage = {
+        role: 'assistant',
+        content: 'I apologize, but I\'m currently unable to process your request. Please check your internet connection and API configuration, then try again.',
+        timestamp: Date.now(),
+        language: globalState.selectedLanguage
+      };
+      
+      setGlobalState(prev => ({
+        ...prev,
+        chatMessages: [...prev.chatMessages, fallbackMessage]
+      }));
     }
   }, [globalState.selectedLanguage, globalState.chatMessages, globalState.ttsEnabled, speak, t, updateStatus]);
 
@@ -146,8 +178,29 @@ function App() {
       
       if (event.ctrlKey && event.key === 'o') {
         event.preventDefault();
-        updateStatus('Manual wake word activation');
+        handleWakeWordToggle();
+        updateStatus('Wake word detection toggled');
+      }
+      
+      if (event.ctrlKey && event.key === 'h') {
+        event.preventDefault();
+        updateStatus(t('helpShortcuts'));
+      }
+      
+      if (event.ctrlKey && event.key === 'd') {
+        event.preventDefault();
+        setDailyBriefOpen(true);
+      }
+      
+      if (event.ctrlKey && event.key === 'a') {
+        event.preventDefault();
+        setAccountsOpen(true);
+      }
+      
+      if (event.ctrlKey && event.key === 'l') {
+        event.preventDefault();
         setGlobalState(prev => ({ ...prev, listening: true }));
+        updateStatus('Manual voice input activated');
       }
     };
 
@@ -210,7 +263,13 @@ function App() {
       <footer className="bg-gray-900 border-t border-gray-700 p-6 mt-12">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="text-gray-400 text-sm leading-relaxed">
-            {t('keyboardHelp')} • Say "Orion" to activate • Ctrl+O for manual activation
+            {t('keyboardHelp')} • Ctrl+O: Wake Word • Ctrl+D: Daily Brief • Ctrl+A: Accounts
+            {wakeWordActive && (
+              <span className="text-green-400 ml-2">
+                • {t('wakeWordActive')}
+                {wakeWordDetected && ' (Detected!)'}
+              </span>
+            )}
           </div>
           
           <button

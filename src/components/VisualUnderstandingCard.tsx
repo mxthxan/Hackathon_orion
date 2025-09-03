@@ -3,6 +3,7 @@ import { Eye, Upload, Volume2, FileDown, MessageCircle } from 'lucide-react';
 import type { Language } from '../types';
 import { getTranslation } from '../utils/translations';
 import { openAIService } from '../services/openai';
+import { BrailleButton } from './BrailleButton';
 
 interface VisualUnderstandingCardProps {
   language: Language;
@@ -56,21 +57,8 @@ export const VisualUnderstandingCard: React.FC<VisualUnderstandingCardProps> = (
   };
 
   const handleExportBraille = async () => {
-    if (!description) return;
-    
-    try {
-      // Create a simple text file for now - in production this would generate actual Braille
-      const blob = new Blob([description], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `description-braille-${Date.now()}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      onStatusChange('Braille file exported successfully');
-    } catch (error) {
-      onStatusChange(`${t('error')}: Failed to export Braille`);
-    }
+    // This is now handled by BrailleButton component
+    onStatusChange('Use the Braille export button to generate Braille files');
   };
 
   return (
@@ -136,13 +124,11 @@ export const VisualUnderstandingCard: React.FC<VisualUnderstandingCardProps> = (
                 {t('readAloud')}
               </button>
               
-              <button
-                onClick={handleExportBraille}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-700"
-              >
-                <FileDown className="w-4 h-4" aria-hidden="true" />
-                {t('exportBraille')}
-              </button>
+              <BrailleButton
+                text={description}
+                language={language}
+                onStatusChange={onStatusChange}
+              />
               
               <button
                 onClick={() => onSendToChat(description)}
