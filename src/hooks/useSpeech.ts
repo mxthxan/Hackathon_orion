@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { Language } from '../types';
 
-interface UseTextToSpeechReturn {
+interface UseSpeechReturn {
   isSpeaking: boolean;
   speak: (text: string, options?: SpeechOptions) => void;
   stop: () => void;
@@ -22,11 +22,11 @@ interface SpeechOptions {
   voice?: SpeechSynthesisVoice;
 }
 
-export const useTextToSpeech = (
+export const useSpeech = (
   onStart?: () => void,
   onEnd?: () => void,
   onError?: (error: string) => void
-): UseTextToSpeechReturn => {
+): UseSpeechReturn => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [rate, setRateState] = useState(1.0);
   const [pitch, setPitchState] = useState(1.0);
