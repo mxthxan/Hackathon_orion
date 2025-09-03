@@ -32,43 +32,42 @@ export const useSpeech = (
   const [pitch, setPitchState] = useState(1.0);
   const [volume, setVolumeState] = useState(1.0);
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
-  
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const speak = useCallback((text: string, options: SpeechOptions = {}) => {
     if ('speechSynthesis' in window) {
       speechSynthesis.cancel();
-      
+
       const utterance = new SpeechSynthesisUtterance(text);
       utteranceRef.current = utterance;
-      
+
       utterance.rate = options.rate ?? rate;
       utterance.pitch = options.pitch ?? pitch;
       utterance.volume = options.volume ?? volume;
       utterance.lang = options.lang ?? 'en-US';
-      
+
       if (options.voice || selectedVoice) {
         utterance.voice = options.voice || selectedVoice;
       }
-      
+
       utterance.onstart = () => {
         setIsSpeaking(true);
         onStart?.();
       };
-      
+
       utterance.onend = () => {
         setIsSpeaking(false);
         onEnd?.();
       };
-      
+
       utterance.onerror = (event) => {
         setIsSpeaking(false);
-        onError?.(event.error);
+        onError?.(event.error || 'Speech synthesis error');
       };
-      
+
       speechSynthesis.speak(utterance);
     } else {
-      onError?.('Text-to-speech not supported in this browser');
+      onError?.('Speech synthesis not supported in this browser');
     }
   }, [rate, pitch, volume, selectedVoice, onStart, onEnd, onError]);
 
@@ -127,3 +126,6 @@ export const useSpeech = (
     setVolume,
   };
 };
+
+// Optional: Export as default if needed
+export default useSpeech;
