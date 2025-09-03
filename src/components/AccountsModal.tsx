@@ -67,6 +67,8 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
 
   const handleConnect = async (provider: keyof ConnectionState) => {
     try {
+      onStatusChange(`Connecting to ${provider}...`);
+      
       if (provider === 'email') {
         const success = await gmailService.authenticate();
         if (success) {
@@ -88,28 +90,32 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
         setConnections(prev => ({ ...prev, [provider]: result.connected }));
         onStatusChange(result.status);
       } else {
+        // Fallback for any other providers
         setConnections(prev => ({ ...prev, [provider]: true }));
         onStatusChange(`${provider} connected successfully`);
       }
     } catch (error) {
+      console.error(`Connection error for ${provider}:`, error);
       onStatusChange(`${t('error')}: Failed to connect ${provider}`);
     }
   };
 
   const handleListEmails = async () => {
     try {
-      if (!gmailService.isAuthenticated()) {
+      if (!connections.email && !gmailService.isAuthenticated()) {
         onStatusChange('Please connect your email account first');
         return;
       }
       
       setEmailsState({ emails: [], loading: true });
       setShowEmails(true);
+      onStatusChange('Fetching emails...');
       
       const emails = await gmailService.getEmails(10);
       setEmailsState({ emails, loading: false });
-      onStatusChange(`Found ${emails.length} unread emails`);
+      onStatusChange(`Found ${emails.length} emails`);
     } catch (error) {
+      console.error('Email fetch error:', error);
       setEmailsState({ emails: mockEmails, loading: false });
       onStatusChange(`${t('error')}: Using mock email data`);
     }
@@ -126,10 +132,11 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
         return;
       }
       
-      setCloudFiles({ files: [], loading: true, provider: connectedProviders[0] });
-      setShowFiles(true);
-      
       const provider = connectedProviders[0];
+      setCloudFiles({ files: [], loading: true, provider });
+      setShowFiles(true);
+      onStatusChange(`Fetching files from ${provider}...`);
+      
       let files = [];
       
       if (provider === 'google' && driveService.isConnected()) {
@@ -143,6 +150,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
       setCloudFiles({ files, loading: false, provider });
       onStatusChange(`Found ${files.length} files in ${provider}`);
     } catch (error) {
+      console.error('Files fetch error:', error);
       setCloudFiles({ files: mockCloudFiles, loading: false, provider: 'mock' });
       onStatusChange(`${t('error')}: Using mock file data`);
     }
@@ -150,12 +158,29 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
 
   const handleFileSelect = (file: any) => {
     onStatusChange(`Selected file: ${file.name}`);
+    onClose(); // Close modal after selection
     // TODO: Implement file preview or send to appropriate card
   };
 
   const handleEmailSelect = (email: any) => {
     onStatusChange(`Selected email from: ${email.from}`);
+    onClose(); // Close modal after selection
     // TODO: Implement email preview or compose reply
+  };
+
+  const handleDisconnect = (provider: keyof ConnectionState) => {
+    setConnections(prev => ({ ...prev, [provider]: false }));
+    onStatusChange(`${provider} disconnected`);
+    
+    // Clear related data
+    if (provider !== 'email' && cloudFiles.provider === provider) {
+      setCloudFiles({ files: [], loading: false, provider: '' });
+      setShowFiles(false);
+    }
+    if (provider === 'email') {
+      setEmailsState({ emails: [], loading: false });
+      setShowEmails(false);
+    }
   };
 
   const connectionButtons = [
@@ -178,6 +203,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
         className="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700"
         ref={setupFocusTrap}
       >
+        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <h2 id="accounts-title" className="text-xl font-bold text-white">
             {t('connectAccounts')}
@@ -191,35 +217,50 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
           </button>
         </div>
 
+        {/* Content */}
         <div className="p-6">
           {!showFiles && !showEmails && (
             <div className="space-y-6">
               {/* Connection Buttons */}
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-white">Connect Your Accounts</h3>
-                {connectionButtons.map(({ key, icon: Icon, label, color }) => (
-                  <button
-                    key={key}
-                    onClick={() => handleConnect(key as keyof ConnectionState)}
-                    disabled={connections[key as keyof ConnectionState]}
-                    className={`w-full flex items-center justify-between gap-3 p-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 ${
-                      connections[key as keyof ConnectionState]
-                        ? 'bg-gray-600 cursor-not-allowed'
-                        : `${color} focus:ring-blue-500`
-                    } text-white`}
-                    aria-label={`${label} - ${connections[key as keyof ConnectionState] ? t('connected') : 'Not connected'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5" aria-hidden="true" />
-                      <span className="font-medium">{label}</span>
+                {connectionButtons.map(({ key, icon: Icon, label, color }) => {
+                  const isConnected = connections[key as keyof ConnectionState];
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleConnect(key as keyof ConnectionState)}
+                        disabled={isConnected}
+                        className={`flex-1 flex items-center justify-between gap-3 p-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 ${
+                          isConnected
+                            ? 'bg-gray-600 cursor-not-allowed'
+                            : `${color} focus:ring-blue-500`
+                        } text-white`}
+                        aria-label={`${label} - ${isConnected ? t('connected') : 'Not connected'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className="w-5 h-5" aria-hidden="true" />
+                          <span className="font-medium">{label}</span>
+                        </div>
+                        {isConnected && (
+                          <span className="text-sm bg-green-500 px-2 py-1 rounded">
+                            {t('connected')}
+                          </span>
+                        )}
+                      </button>
+                      
+                      {isConnected && (
+                        <button
+                          onClick={() => handleDisconnect(key as keyof ConnectionState)}
+                          className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          aria-label={`Disconnect ${key}`}
+                        >
+                          Disconnect
+                        </button>
+                      )}
                     </div>
-                    {connections[key as keyof ConnectionState] && (
-                      <span className="text-sm bg-green-500 px-2 py-1 rounded">
-                        {t('connected')}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                  );
+                })}
               </div>
               
               {/* Action Buttons */}
@@ -227,14 +268,16 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                 <h3 className="text-lg font-medium text-white">Browse Your Content</h3>
                 <button
                   onClick={handleListFiles}
-                  className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!Object.entries(connections).some(([key, connected]) => connected && key !== 'email')}
+                  className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   aria-label="List files from connected cloud storage"
                 >
                   {t('listFiles')}
                 </button>
                 <button
                   onClick={handleListEmails}
-                  className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!connections.email}
+                  className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   aria-label="List emails from connected email accounts"
                 >
                   {t('listEmails')}
@@ -263,6 +306,10 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                   <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p>Loading files...</p>
                 </div>
+              ) : cloudFiles.files.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p>No files found</p>
+                </div>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {cloudFiles.files.map((file) => (
@@ -274,6 +321,11 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                     >
                       <div className="font-medium text-white">{file.name}</div>
                       <div className="text-sm text-gray-400">{file.mimeType}</div>
+                      {file.size && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -299,6 +351,10 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                   <div className="animate-spin w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p>Loading emails...</p>
                 </div>
+              ) : emailsState.emails.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p>No emails found</p>
+                </div>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {emailsState.emails.map((email) => (
@@ -308,9 +364,15 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                       className="w-full text-left p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       aria-label={`Email from ${email.from}, Subject: ${email.subject}`}
                     >
-                      <div className="font-medium text-white">{email.from}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-white">{email.from}</div>
+                        {!email.isRead && (
+                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                        )}
+                      </div>
                       <div className="text-sm text-gray-300">{email.subject}</div>
                       <div className="text-xs text-gray-400 mt-1">{email.snippet.substring(0, 100)}...</div>
+                      <div className="text-xs text-gray-500 mt-1">{email.date}</div>
                     </button>
                   ))}
                 </div>
